@@ -10,6 +10,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -17,9 +18,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import app.tempwatch.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.cook.TempHub
+import app.tempwatch.data.Prefs
 
 /** Full-screen pages that sit on top of the tabs. */
 private sealed interface Page {
@@ -33,6 +37,16 @@ fun AppRoot(canScan: Boolean, onRequestPermissions: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var page by remember { mutableStateOf<Page?>(null) }
     BackHandler(enabled = page != null) { page = null }
+
+    // Keep the screen awake while the app is open during a cook (Settings → While cooking).
+    val cook by TempHub.cook.collectAsStateWithLifecycle()
+    val keepOn by Prefs.keepScreenOn.collectAsStateWithLifecycle()
+    val view = LocalView.current
+    val awake = cook != null && keepOn
+    DisposableEffect(awake) {
+        view.keepScreenOn = awake
+        onDispose { view.keepScreenOn = false }
+    }
 
     Scaffold(
         bottomBar = {

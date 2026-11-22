@@ -125,7 +125,7 @@ object Alerts {
         runCatching { manager(context).notify(id, n) }
     }
 
-    fun manager(context: Context): NotificationManager = context.getSystemService(NotificationManager::class.java)
+    fun manager(context: Context): NotificationManager = context.getSystemService(NotificationManager::class.java)!!
 }
 
 /** What the lock-screen card shows. Compared between updates so we only re-post on change. */

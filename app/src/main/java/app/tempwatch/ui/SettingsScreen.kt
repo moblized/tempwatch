@@ -52,6 +52,7 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
     val context = LocalContext.current
     val unit by Prefs.unit.collectAsStateWithLifecycle()
     val headsUp by Prefs.headsUp.collectAsStateWithLifecycle()
+    val keepScreenOn by Prefs.keepScreenOn.collectAsStateWithLifecycle()
     val devices by Prefs.devices.collectAsStateWithLifecycle()
     // Re-check notification settings whenever we come back from the system settings screen.
     var resumes by remember { mutableIntStateOf(0) }
@@ -78,7 +79,7 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
         }
 
         SectionCard {
-            Text("Alerts", style = MaterialTheme.typography.titleMedium)
+            Text("While cooking", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Almost-done heads-up")
@@ -89,6 +90,17 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
                     )
                 }
                 Switch(checked = headsUp, onCheckedChange = { Prefs.setHeadsUp(it) })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keep screen on while cooking")
+                    Text(
+                        "Only while TempWatch is open. Locking the phone still works; the cook keeps running.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = keepScreenOn, onCheckedChange = { Prefs.setKeepScreenOn(it) })
             }
             Text(
                 "When the target is reached, your phone's alarm sound plays on the alarm volume until you stop it " +

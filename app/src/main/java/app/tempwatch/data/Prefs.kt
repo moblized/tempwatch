@@ -17,6 +17,10 @@ object Prefs {
     /** Send an "almost done" alert 5°F / 3°C before the target. */
     val headsUp: StateFlow<Boolean> = _headsUp
 
+    private val _keepScreenOn = MutableStateFlow(true)
+    /** Keep the screen awake while the app is open during a cook. */
+    val keepScreenOn: StateFlow<Boolean> = _keepScreenOn
+
     private val _devices = MutableStateFlow<Map<String, String>>(emptyMap())
     /** Boosters seen before: Bluetooth address → advertised name ("" if none). */
     val devices: StateFlow<Map<String, String>> = _devices
@@ -25,6 +29,7 @@ object Prefs {
         sp = context.getSharedPreferences("tempwatch", Context.MODE_PRIVATE)
         _unit.value = if (sp.getString(KEY_UNIT, "F") == "C") TempUnit.C else TempUnit.F
         _headsUp.value = sp.getBoolean(KEY_HEADS_UP, true)
+        _keepScreenOn.value = sp.getBoolean(KEY_SCREEN_ON, true)
         _devices.value = (sp.getStringSet(KEY_DEVICES, emptySet()) ?: emptySet())
             .associateWith { sp.getString(nameKey(it), "") ?: "" }
     }
@@ -37,6 +42,11 @@ object Prefs {
     fun setHeadsUp(on: Boolean) {
         _headsUp.value = on
         sp.edit().putBoolean(KEY_HEADS_UP, on).apply()
+    }
+
+    fun setKeepScreenOn(on: Boolean) {
+        _keepScreenOn.value = on
+        sp.edit().putBoolean(KEY_SCREEN_ON, on).apply()
     }
 
     /** Remembers a booster so it can be found with the screen off (see BleScanner filters). */
@@ -63,4 +73,5 @@ object Prefs {
     private const val KEY_UNIT = "unit"
     private const val KEY_HEADS_UP = "heads_up"
     private const val KEY_DEVICES = "devices"
+    private const val KEY_SCREEN_ON = "keep_screen_on"
 }

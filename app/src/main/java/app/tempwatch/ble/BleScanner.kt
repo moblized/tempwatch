@@ -3,7 +3,6 @@ package app.tempwatch.ble
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -16,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.os.PowerManager
 import android.os.SystemClock
 import app.tempwatch.data.Prefs
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,8 +32,8 @@ import kotlinx.coroutines.flow.StateFlow
  *    off, so the scan is filtered to the TempSpike service UUID and the addresses and names of
  *    boosters seen before.
  *
- * The scan is restarted every 20 minutes because Android quietly downgrades scans that run
- * longer than 30.
+ * The scan is restarted every 20 minutes (while the screen is on) because Android can quietly
+ * downgrade scans that run longer than 30.
  */
 @SuppressLint("MissingPermission") // every scan call is behind hasPermission()
 object BleScanner {
@@ -63,7 +63,16 @@ object BleScanner {
     private var lastStart = 0L
 
     private val retry = Runnable { refresh(force = false) }
-    private val periodicRestart = Runnable { refresh(force = true) }
+
+    /**
+     * Some phones stop delivering results to a scan restarted with the screen off, so the routine
+     * restart waits for the screen to be on. (If readings do go quiet with the screen off,
+     * TempHub's watchdog restarts the scan anyway — nothing to lose by then.)
+     */
+    private val periodicRestart: Runnable = Runnable {
+        val interactive = app?.getSystemService(PowerManager::class.java)?.isInteractive ?: true
+        if (interactive) refresh(force = true) else main.postDelayed(periodicRestart, 60_000L)
+    }
 
     fun hasPermission(context: Context): Boolean {
         val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -159,17 +168,7 @@ object BleScanner {
         )
         for ((address, name) in Prefs.devices.value) {
             if (BluetoothAdapter.checkBluetoothAddress(address)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    // We don't know whether the booster uses a public or a random address, so match both.
-                    runCatching {
-                        filters += ScanFilter.Builder().setDeviceAddress(address, BluetoothDevice.ADDRESS_TYPE_PUBLIC).build()
-                    }
-                    runCatching {
-                        filters += ScanFilter.Builder().setDeviceAddress(address, BluetoothDevice.ADDRESS_TYPE_RANDOM).build()
-                    }
-                } else {
-                    runCatching { filters += ScanFilter.Builder().setDeviceAddress(address).build() }
-                }
+                runCatching { filters += ScanFilter.Builder().setDeviceAddress(address).build() }
             }
             if (name.isNotBlank()) filters += ScanFilter.Builder().setDeviceName(name).build()
         }
