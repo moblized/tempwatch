@@ -30,6 +30,8 @@ data class ProbeReading(
  *  - Android splits manufacturer data into a 2-byte "company ID" plus the rest, but TempSpike
  *    boosters don't use a real company ID: those two bytes are just the start of the reading.
  *    So we glue them back on (little-endian) before decoding — see [frame].
+ *  - Between readings (e.g. while the probe sits in the booster) the TP961 sends a 6-byte frame
+ *    that is just its own Bluetooth address backwards. No reading in it, so it's ignored.
  *  - TempSpike (TP96x, which includes the TP961 TempSpike CORE), 7 bytes (13 on some, the
  *    extra 6 are ignored):
  *      [0] probe number  [1..2] meat °C + 30  [3..4] battery mV  [5..6] grill °C + 30
@@ -43,11 +45,23 @@ object TempSpikeDecoder {
     private val INTERNAL_RANGE = -40.0..150.0
     private val AMBIENT_RANGE = -40.0..450.0
 
+    /**
+     * Newer boosters advertise a short code instead of the model: the TP961 TempSpike CORE is
+     * "I61" (confirmed in thermopro-ble PR #224 and on a real unit). Same 7-byte frame as the TP960.
+     */
+    private val SHORT_NAME = Regex("^I[67]\\d$")
+
     /** True for anything that could be a TempSpike booster, by its name or its service UUID. */
     fun looksLikeTempSpike(name: String?, serviceUuids: Collection<String>): Boolean {
         val n = name?.trim()?.uppercase().orEmpty()
-        return n.startsWith("TP96") || n.startsWith("TP97") || n.contains("SPIKE") ||
+        return n.startsWith("TP96") || n.startsWith("TP97") || n.contains("SPIKE") || SHORT_NAME.matches(n) ||
             serviceUuids.any { it.equals(SERVICE_UUID, ignoreCase = true) }
+    }
+
+    /** "I61" → "TP961", for display. */
+    fun modelName(name: String?): String? {
+        val n = name?.trim() ?: return null
+        return if (SHORT_NAME.matches(n.uppercase())) "TP9${n.substring(1)}" else n.substringBefore(" (")
     }
 
     /** Puts Android's split-off "company ID" back in front of the payload. */

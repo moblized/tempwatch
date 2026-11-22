@@ -31,6 +31,10 @@ The byte layout comes from the open-source [thermopro-ble](https://github.com/Bl
 
 Android splits the first two bytes off as a "company ID", so `TempSpikeDecoder.frame()` glues them back on before decoding.
 
+The TP961 advertises under the name **"I61"**, not "TP961" (also found in [thermopro-ble #224](https://github.com/Bluetooth-Devices/thermopro-ble/pull/224)).
+Between readings, for example while the probe is in the booster, it sends a 6-byte frame that is just its own address backwards.
+Those frames are ignored.
+
 Things to know:
 
 - **Close the TempPro app while using TempWatch.** The booster may stop broadcasting while another app is connected to it.

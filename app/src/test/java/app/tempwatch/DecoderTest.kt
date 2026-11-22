@@ -25,6 +25,26 @@ class DecoderTest {
     }
 
     @Test
+    fun tp961AdvertisingAsI61() {
+        // thermopro-ble PR #224, real TP961, probe out at room temperature:
+        // name "I61", manufacturer_data={13824: b"\x00\xec\t6\x00"} → 24 °C / 24 °C, battery 76 %
+        assertTrue(TempSpikeDecoder.looksLikeTempSpike("I61", emptyList()))
+        val r = TempSpikeDecoder.decode("I61", mapOf(13824 to bytes(0x00, 0xEC, 0x09, 0x36, 0x00))).single()
+        assertEquals(0, r.probe)
+        assertEquals(24.0, r.internalC!!, 0.001)
+        assertEquals(24.0, r.ambientC!!, 0.001)
+        assertEquals(76, r.batteryPercent)
+        assertEquals("TP961", TempSpikeDecoder.modelName("I61"))
+    }
+
+    @Test
+    fun tp961AddressOnlyFrameHasNoReading() {
+        // Captured from the user's TP961 (68:A0:00:01:12:A9) with the probe docked:
+        // Mfr 12A9 → 01 00 A0 68, i.e. its own address backwards.
+        assertTrue(TempSpikeDecoder.decode("I61", mapOf(0x12A9 to bytes(0x01, 0x00, 0xA0, 0x68))).isEmpty())
+    }
+
+    @Test
     fun tp962rTwoProbes() {
         // {17152: b"\x00\x17\nC\x00", 14081: b"\x00;\x0b7\x00"}
         val r = TempSpikeDecoder.decode(

@@ -225,6 +225,7 @@ private fun describe(a: RawAdvert): String = buildString {
     if (a.serviceUuids.isNotEmpty()) appendLine("Services: ${a.serviceUuids.joinToString()}")
     a.manufacturer.forEach { appendLine("Mfr $it") }
     a.decoded?.let { appendLine("Decoded: $it") }
+    if (a.decoded == null) a.lastReadingFrame?.let { appendLine("Last reading: $it") }
     append("Raw: ${a.rawHex}")
 }
 

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.ble.BleScanner
+import app.tempwatch.ble.TempSpikeDecoder
 import app.tempwatch.cook.ActiveCook
 import app.tempwatch.cook.Estimator
 import app.tempwatch.cook.LiveCard
@@ -66,7 +67,11 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
     val primary = TempHub.primary(devices, cook)
     val device = primary?.first
     val reading = primary?.second
-    val ageMs = device?.let { now - it.lastSeen }
+    val ageMs = device?.let { now - it.lastReadingAt }
+    // A booster we can hear that hasn't sent temperatures yet (probe still docked, or asleep).
+    val waiting = if (device == null) {
+        devices.values.filter { it.probes.isEmpty() && now - it.lastSeen < 30_000L }.maxByOrNull { it.lastSeen }
+    } else null
     val fresh = ageMs != null && ageMs < 30_000L
     val meat = reading?.internalC ?: cook?.record?.samples?.lastOrNull { it.internalC != null }?.internalC
 
@@ -76,7 +81,7 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("TempWatch", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            ConnectionText(device?.name, ageMs, fresh)
+            ConnectionText(TempSpikeDecoder.modelName(device?.name ?: waiting?.name), ageMs, fresh, found = waiting != null)
         }
 
         if (cook?.alarmRinging == true) {
@@ -117,6 +122,13 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
             }
             scan == BleScanner.Status.NO_BLUETOOTH -> SectionCard {
                 Text("This phone has no Bluetooth LE.", style = MaterialTheme.typography.titleMedium)
+            }
+            waiting != null && cook == null -> SectionCard {
+                Text(
+                    "Found your ${TempSpikeDecoder.modelName(waiting.name) ?: "TempSpike"}",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text("The booster is on, but the probe isn't sending temperatures yet. Take the probe out of the booster; readings start within a few seconds.")
             }
             device == null && cook == null -> SectionCard {
                 Text("Looking for your TempSpike…", style = MaterialTheme.typography.titleMedium)
@@ -187,10 +199,11 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
 }
 
 @Composable
-private fun ConnectionText(name: String?, ageMs: Long?, fresh: Boolean) {
+private fun ConnectionText(name: String?, ageMs: Long?, fresh: Boolean, found: Boolean) {
     val (text, color) = when {
+        ageMs == null && found -> (name ?: "Found") to MaterialTheme.colorScheme.onSurfaceVariant
         ageMs == null -> "Searching" to MaterialTheme.colorScheme.onSurfaceVariant
-        fresh -> (name?.substringBefore(" (") ?: "Connected") to MaterialTheme.colorScheme.tertiary
+        fresh -> (name ?: "Connected") to MaterialTheme.colorScheme.tertiary
         else -> "No signal" to MaterialTheme.colorScheme.error
     }
     Text(text, style = MaterialTheme.typography.labelLarge, color = color)

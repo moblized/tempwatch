@@ -15,7 +15,10 @@ data class DeviceState(
     val address: String,
     val name: String?,
     val rssi: Int,
+    /** Last broadcast of any kind (the TP961 also sends address-only frames between readings). */
     val lastSeen: Long,
+    /** Last broadcast that carried temperatures; 0 if none yet (e.g. probe still in the booster). */
+    val lastReadingAt: Long,
     val probes: Map<Int, ProbeReading>,
 )
 
@@ -32,6 +35,8 @@ data class RawAdvert(
     val rawHex: String,
     val tempSpike: Boolean,
     val decoded: String?,
+    /** The most recent broadcast that carried temperatures (the latest one may not). */
+    val lastReadingFrame: String? = null,
 )
 
 /** The cook in progress plus the alert bookkeeping that goes with it. */
@@ -113,8 +118,10 @@ object TempHub {
         if (spike || captureAllDevices || name?.uppercase()?.startsWith("TP") == true) {
             recordRaw(address, name, result.rssi, now, uuids, mfr, record.bytes, spike, readings)
         }
-        if (readings.isEmpty()) return
+        if (!spike) return
 
+        // Remember it even before the first reading, so it's recognised (and found with the
+        // screen off) from now on.
         Prefs.rememberDevice(address, name)
         val old = _devices.value[address]
         _devices.value = _devices.value + (address to DeviceState(
@@ -122,6 +129,7 @@ object TempHub {
             name = name,
             rssi = result.rssi,
             lastSeen = now,
+            lastReadingAt = if (readings.isNotEmpty()) now else old?.lastReadingAt ?: 0L,
             probes = (old?.probes ?: emptyMap()) + readings.associateBy { it.probe },
         ))
         readings.forEach { onCookReading(address, it, now) }
@@ -148,6 +156,11 @@ object TempHub {
             rawHex = bytes?.let { TempSpikeDecoder.hex(it.copyOf(lastNonZero(it))) }.orEmpty(),
             tempSpike = spike,
             decoded = decoded,
+            lastReadingFrame = if (decoded != null) {
+                mfr.map { (id, data) -> "%04X → %s".format(id, TempSpikeDecoder.hex(data)) }.joinToString("; ") + " = " + decoded
+            } else {
+                prev?.lastReadingFrame
+            },
         )
         var next = _raw.value + (address to entry)
         if (next.size > MAX_RAW) {
@@ -169,7 +182,7 @@ object TempHub {
     /** The probe on screen: the cook's probe if cooking, else the most recently heard one. */
     fun primary(devices: Map<String, DeviceState>, cook: ActiveCook?): Pair<DeviceState, ProbeReading>? {
         val device = cook?.record?.device?.let { devices[it] }
-            ?: devices.values.filter { it.probes.isNotEmpty() }.maxByOrNull { it.lastSeen }
+            ?: devices.values.filter { it.probes.isNotEmpty() }.maxByOrNull { it.lastReadingAt }
             ?: return null
         val probe = cook?.record?.device?.let { device.probes[cook.record.probe] }
             ?: device.probes.entries.minByOrNull { it.key }?.value
