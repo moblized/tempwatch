@@ -1,10 +1,13 @@
 package app.tempwatch.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.ble.BleScanner
+import app.tempwatch.ble.GattProbe
 import app.tempwatch.cook.LiveUpdates
 import app.tempwatch.cook.RawAdvert
 import app.tempwatch.cook.TempHub
@@ -166,6 +170,22 @@ fun BluetoothDetailsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val raw by TempHub.raw.collectAsStateWithLifecycle()
     val scan by BleScanner.status.collectAsStateWithLifecycle()
+    val gattLog by GattProbe.log.collectAsStateWithLifecycle()
+    val gattRunning by GattProbe.running.collectAsStateWithLifecycle()
+    var pendingTest by remember { mutableStateOf<String?>(null) }
+    val askConnect = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val address = pendingTest
+        pendingTest = null
+        if (granted && address != null) GattProbe.run(context, address)
+    }
+    val startTest: (String) -> Unit = { address ->
+        if (GattProbe.hasPermission(context)) {
+            GattProbe.run(context, address)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            pendingTest = address
+            askConnect.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
     var showAll by remember { mutableStateOf(false) }
     DisposableEffect(showAll) {
         TempHub.captureAllDevices = showAll
@@ -197,8 +217,27 @@ fun BluetoothDetailsScreen(onBack: () -> Unit) {
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { copyReport(context, list) }) { Text("Copy report") }
+                Button(onClick = { copyReport(context, list, gattLog) }) { Text("Copy report") }
                 OutlinedButton(onClick = { TempHub.clearRaw() }) { Text("Clear") }
+            }
+        }
+        if (gattLog.isNotEmpty() || gattRunning) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            if (gattRunning) "Connection test running…" else "Connection test",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        SelectionContainer {
+                            Text(
+                                gattLog.joinToString("\n"),
+                                fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
             }
         }
         if (list.isEmpty()) {
@@ -206,13 +245,21 @@ fun BluetoothDetailsScreen(onBack: () -> Unit) {
         }
         items(list, key = { it.address }) { a ->
             Card(Modifier.fillMaxWidth()) {
-                SelectionContainer {
-                    Text(
-                        describe(a),
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(12.dp),
-                    )
+                Column(Modifier.padding(12.dp)) {
+                    SelectionContainer {
+                        Text(
+                            describe(a),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (a.tempSpike) {
+                        OutlinedButton(
+                            onClick = { startTest(a.address) },
+                            enabled = !gattRunning,
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) { Text("Connection test") }
+                    }
                 }
             }
         }
@@ -224,16 +271,24 @@ private fun describe(a: RawAdvert): String = buildString {
     appendLine("RSSI ${a.rssi} dBm · ${a.count} packets · ${((System.currentTimeMillis() - a.lastSeen) / 1000)} s ago")
     if (a.serviceUuids.isNotEmpty()) appendLine("Services: ${a.serviceUuids.joinToString()}")
     a.manufacturer.forEach { appendLine("Mfr $it") }
+    if (a.variants.isNotEmpty()) {
+        appendLine("Packet types:")
+        a.variants.forEach { (kind, n) -> appendLine("  ${n}× $kind") }
+    }
     a.decoded?.let { appendLine("Decoded: $it") }
     if (a.decoded == null) a.lastReadingFrame?.let { appendLine("Last reading: $it") }
     append("Raw: ${a.rawHex}")
 }
 
-private fun copyReport(context: Context, list: List<RawAdvert>) {
+private fun copyReport(context: Context, list: List<RawAdvert>, gattLog: List<String>) {
     val text = buildString {
         appendLine("TempWatch ${appVersion(context)} on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
         appendLine()
         list.forEach { appendLine(describe(it)); appendLine() }
+        if (gattLog.isNotEmpty()) {
+            appendLine("Connection test:")
+            gattLog.forEach { appendLine(it) }
+        }
     }
     context.getSystemService(ClipboardManager::class.java)
         ?.setPrimaryClip(ClipData.newPlainText("TempWatch Bluetooth report", text))

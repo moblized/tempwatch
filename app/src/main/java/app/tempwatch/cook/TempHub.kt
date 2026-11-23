@@ -37,6 +37,8 @@ data class RawAdvert(
     val decoded: String?,
     /** The most recent broadcast that carried temperatures (the latest one may not). */
     val lastReadingFrame: String? = null,
+    /** Each distinct kind of packet heard from this device → how many times. */
+    val variants: Map<String, Int> = emptyMap(),
 )
 
 /** The cook in progress plus the alert bookkeeping that goes with it. */
@@ -116,7 +118,7 @@ object TempHub {
         val readings = if (spike) TempSpikeDecoder.decode(name, mfr) else emptyList()
 
         if (spike || captureAllDevices || name?.uppercase()?.startsWith("TP") == true) {
-            recordRaw(address, name, result.rssi, now, uuids, mfr, record.bytes, spike, readings)
+            recordRaw(address, name, result.rssi, now, uuids, mfr, record.bytes, spike, readings, packetKind(result))
         }
         if (!spike) return
 
@@ -137,10 +139,22 @@ object TempHub {
 
     private fun recordRaw(
         address: String, name: String?, rssi: Int, now: Long, uuids: List<String>,
-        mfr: Map<Int, ByteArray>, bytes: ByteArray?, spike: Boolean, readings: List<ProbeReading>,
+        mfr: Map<Int, ByteArray>, bytes: ByteArray?, spike: Boolean, readings: List<ProbeReading>, kind: String,
     ) {
         val prev = _raw.value[address]
-        if (prev != null && now - prev.lastSeen < 1_000L && readings.isEmpty()) return // don't churn the screen
+        val signature = buildString {
+            append(kind)
+            append(" · ").append(bytes?.let { lastNonZero(it) } ?: 0).append(" bytes")
+            if (uuids.isNotEmpty()) append(" · uuids ").append(uuids.joinToString { it.take(8) })
+            mfr.forEach { (id, data) -> append(" · mfr %04X (%d bytes)".format(id, data.size)) }
+        }
+        val known = prev?.variants ?: emptyMap()
+        var variants = known + (signature to ((known[signature] ?: 0) + 1))
+        if (variants.size > 10) variants = variants.entries.toList().takeLast(10).associate { it.key to it.value }
+        if (prev != null && now - prev.lastSeen < 1_000L && readings.isEmpty() && signature in known) {
+            _raw.value = _raw.value + (address to prev.copy(variants = variants, count = prev.count + 1))
+            return // same kind of packet as before: just count it
+        }
         val decoded = readings.joinToString("; ") { r ->
             "probe ${r.probe + 1}: meat ${r.internalC ?: "--"}°C, grill ${r.ambientC ?: "--"}°C, " +
                 "battery ${r.batteryPercent ?: "--"}% (${r.batteryMillivolts ?: "--"} mV) [${r.format}]"
@@ -156,6 +170,7 @@ object TempHub {
             rawHex = bytes?.let { TempSpikeDecoder.hex(it.copyOf(lastNonZero(it))) }.orEmpty(),
             tempSpike = spike,
             decoded = decoded,
+            variants = variants,
             lastReadingFrame = if (decoded != null) {
                 mfr.map { (id, data) -> "%04X → %s".format(id, TempSpikeDecoder.hex(data)) }.joinToString("; ") + " = " + decoded
             } else {
@@ -167,6 +182,13 @@ object TempHub {
             next = next.values.sortedByDescending { it.lastSeen }.take(MAX_RAW).associateBy { it.address }
         }
         _raw.value = next
+    }
+
+    private fun packetKind(r: ScanResult): String {
+        if (r.isLegacy) return "legacy" + if (r.isConnectable) " connectable" else ""
+        fun phy(p: Int) = when (p) { 1 -> "1M"; 2 -> "2M"; 3 -> "Coded"; else -> "-" }
+        return "extended sid ${r.advertisingSid} ${phy(r.primaryPhy)}/${phy(r.secondaryPhy)}" +
+            if (r.isConnectable) " connectable" else ""
     }
 
     private fun lastNonZero(b: ByteArray): Int {

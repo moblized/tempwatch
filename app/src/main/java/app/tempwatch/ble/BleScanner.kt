@@ -132,10 +132,15 @@ object BleScanner {
             return
         }
 
-        val settings = ScanSettings.Builder()
+        val builder = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setReportDelay(0)
-            .build()
+        // Bluetooth 5 phones: also hear extended / long-range (Coded PHY) advertising, which
+        // newer long-range boosters may use. Legacy advertising is still reported as before.
+        if (adapter.isLeExtendedAdvertisingSupported) {
+            builder.setLegacy(false).setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
+        }
+        val settings = builder.build()
         try {
             scanner.startScan(if (filtered) backgroundFilters() else emptyList(), settings, callback)
         } catch (e: Exception) {
