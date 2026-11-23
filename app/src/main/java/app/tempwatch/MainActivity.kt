@@ -12,6 +12,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.tempwatch.ble.BleScanner
+import app.tempwatch.ble.GattProbe
+import app.tempwatch.ble.SpikeLink
 import app.tempwatch.cook.CookService
 import app.tempwatch.cook.TempHub
 import app.tempwatch.ui.AppRoot
@@ -24,6 +26,7 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             canScan = BleScanner.hasPermission(this)
             if (canScan) BleScanner.restart()
+            if (GattProbe.hasPermission(this)) SpikeLink.retryAll()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,7 +38,9 @@ class MainActivity : ComponentActivity() {
                 AppRoot(canScan = canScan, onRequestPermissions = ::requestPermissions)
             }
         }
-        if (savedInstanceState == null && (!canScan || missingNotificationPermission())) requestPermissions()
+        if (savedInstanceState == null && (!canScan || !GattProbe.hasPermission(this) || missingNotificationPermission())) {
+            requestPermissions()
+        }
     }
 
     override fun onStart() {
@@ -55,6 +60,7 @@ class MainActivity : ComponentActivity() {
         val wanted = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_CONNECT) // the TP961 is read over a connection
             } else {
                 add(Manifest.permission.ACCESS_FINE_LOCATION)
             }

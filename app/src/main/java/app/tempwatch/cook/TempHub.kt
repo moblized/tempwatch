@@ -3,6 +3,7 @@ package app.tempwatch.cook
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import app.tempwatch.ble.BleScanner
+import app.tempwatch.ble.SpikeLink
 import app.tempwatch.ble.ProbeReading
 import app.tempwatch.ble.TempSpikeDecoder
 import app.tempwatch.data.Prefs
@@ -91,6 +92,10 @@ object TempHub {
         app = context.applicationContext
         names.putAll(Prefs.devices.value.filterValues { it.isNotBlank() })
         BleScanner.listener = ::onScanResult
+        SpikeLink.onReading = ::onLinkReading
+        SpikeLink.onRssi = { address, rssi ->
+            _devices.value[address]?.let { _devices.value = _devices.value + (address to it.copy(rssi = rssi)) }
+        }
         CookStore.loadActive(app)?.let { rec ->
             val latest = rec.samples.lastOrNull { it.internalC != null }?.internalC
             _cook.value = ActiveCook(
@@ -125,17 +130,44 @@ object TempHub {
         // Remember it even before the first reading, so it's recognised (and found with the
         // screen off) from now on.
         Prefs.rememberDevice(address, name)
+        // The TP961 broadcasts only its address; its readings come over a connection.
+        if (readings.isEmpty() && TempSpikeDecoder.needsConnection(name)) SpikeLink.ensure(address)
+        ingest(address, name, result.rssi, readings, now)
+    }
+
+    /** A notification from a connected TP961 (see SpikeLink). `reading` is null for an empty slot. */
+    private fun onLinkReading(address: String, reading: ProbeReading?, raw: ByteArray) {
+        val now = System.currentTimeMillis()
+        val name = names[address] ?: Prefs.devices.value[address]?.takeIf { it.isNotBlank() }
+        ingest(address, name, null, listOfNotNull(reading), now)
+        val prev = _raw.value[address] ?: RawAdvert(
+            address = address, name = name, rssi = 0, lastSeen = now, count = 0, serviceUuids = emptyList(),
+            manufacturer = emptyList(), rawHex = "", tempSpike = true, decoded = null,
+        )
+        val kind = "connection FF01 · ${raw.size} bytes"
+        _raw.value = _raw.value + (address to prev.copy(
+            lastSeen = now,
+            variants = prev.variants + (kind to ((prev.variants[kind] ?: 0) + 1)),
+            lastReadingFrame = if (reading != null) "FF01 ${TempSpikeDecoder.hex(raw)} = ${describe(reading)}" else prev.lastReadingFrame,
+        ))
+    }
+
+    private fun ingest(address: String, name: String?, rssi: Int?, readings: List<ProbeReading>, now: Long) {
         val old = _devices.value[address]
         _devices.value = _devices.value + (address to DeviceState(
             address = address,
-            name = name,
-            rssi = result.rssi,
+            name = name ?: old?.name,
+            rssi = rssi ?: old?.rssi ?: 0,
             lastSeen = now,
             lastReadingAt = if (readings.isNotEmpty()) now else old?.lastReadingAt ?: 0L,
             probes = (old?.probes ?: emptyMap()) + readings.associateBy { it.probe },
         ))
         readings.forEach { onCookReading(address, it, now) }
     }
+
+    private fun describe(r: ProbeReading): String =
+        "probe ${r.probe + 1}: meat ${r.internalC ?: "--"}°C, grill ${r.ambientC ?: "--"}°C, " +
+            "battery ${r.batteryPercent ?: "--"}% (${r.batteryMillivolts ?: "--"} mV) [${r.format}]"
 
     private fun recordRaw(
         address: String, name: String?, rssi: Int, now: Long, uuids: List<String>,
@@ -155,10 +187,7 @@ object TempHub {
             _raw.value = _raw.value + (address to prev.copy(variants = variants, count = prev.count + 1))
             return // same kind of packet as before: just count it
         }
-        val decoded = readings.joinToString("; ") { r ->
-            "probe ${r.probe + 1}: meat ${r.internalC ?: "--"}°C, grill ${r.ambientC ?: "--"}°C, " +
-                "battery ${r.batteryPercent ?: "--"}% (${r.batteryMillivolts ?: "--"} mV) [${r.format}]"
-        }.ifEmpty { null }
+        val decoded = readings.joinToString("; ") { describe(it) }.ifEmpty { null }
         val entry = RawAdvert(
             address = address,
             name = name,

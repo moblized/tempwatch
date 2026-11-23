@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.ble.BleScanner
+import app.tempwatch.ble.SpikeLink
 import app.tempwatch.ble.TempSpikeDecoder
 import app.tempwatch.cook.ActiveCook
 import app.tempwatch.cook.Estimator
@@ -59,6 +60,7 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
     val cookState by TempHub.cook.collectAsStateWithLifecycle()
     val unit by Prefs.unit.collectAsStateWithLifecycle()
     val scan by BleScanner.status.collectAsStateWithLifecycle()
+    val links by SpikeLink.states.collectAsStateWithLifecycle()
     val now by rememberNow()
     val context = LocalContext.current
     var confirmEnd by remember { mutableStateOf(false) }
@@ -124,11 +126,30 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
                 Text("This phone has no Bluetooth LE.", style = MaterialTheme.typography.titleMedium)
             }
             waiting != null && cook == null -> SectionCard {
-                Text(
-                    "Found your ${TempSpikeDecoder.modelName(waiting.name) ?: "TempSpike"}",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text("The booster is on, but the probe isn't sending temperatures yet. Take the probe out of the booster; readings start within a few seconds.")
+                val model = TempSpikeDecoder.modelName(waiting.name) ?: "TempSpike"
+                when (links[waiting.address]) {
+                    SpikeLink.State.CONNECTING, SpikeLink.State.RECONNECTING -> {
+                        Text("Connecting to your $model…", style = MaterialTheme.typography.titleMedium)
+                        Text("Readings start a few seconds after it connects. If the TempPro app is open, close it: the booster takes one connection at a time.")
+                    }
+                    SpikeLink.State.CONNECTED -> {
+                        Text("Connected to your $model", style = MaterialTheme.typography.titleMedium)
+                        Text("Waiting for the probe. Take it out of the booster; readings start within a few seconds.")
+                    }
+                    SpikeLink.State.NO_PERMISSION -> {
+                        Text("Found your $model", style = MaterialTheme.typography.titleMedium)
+                        Text("It sends temperatures over a connection, so TempWatch needs the Nearby devices permission to connect.")
+                        Button(onClick = onRequestPermissions) { Text("Allow") }
+                    }
+                    SpikeLink.State.UNSUPPORTED -> {
+                        Text("Found your $model", style = MaterialTheme.typography.titleMedium)
+                        Text("Its connection didn't look as expected. Send a report from Settings → Bluetooth details.")
+                    }
+                    null -> {
+                        Text("Found your $model", style = MaterialTheme.typography.titleMedium)
+                        Text("The booster is on, but the probe isn't sending temperatures yet. Take the probe out of the booster; readings start within a few seconds.")
+                    }
+                }
             }
             device == null && cook == null -> SectionCard {
                 Text("Looking for your TempSpike…", style = MaterialTheme.typography.titleMedium)

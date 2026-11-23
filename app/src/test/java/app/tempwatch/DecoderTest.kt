@@ -45,6 +45,22 @@ class DecoderTest {
     }
 
     @Test
+    fun tp961ConnectionNotifications() {
+        // From the user's TP961 over a connection (FF01 notifications), probe just taken out:
+        // slot 0 = the probe at 31 °C / 31 °C, 2621 mV; slot 1 = empty (−1 °C / −1 °C).
+        val probe = TempSpikeDecoder.decodeNotification(bytes(0x10, 0x00, 0x3D, 0x00, 0x3D, 0x0A, 0x3D, 0x00))!!
+        assertEquals(0, probe.probe)
+        assertEquals(31.0, probe.internalC!!, 0.001)
+        assertEquals(31.0, probe.ambientC!!, 0.001)
+        assertEquals(2621, probe.batteryMillivolts)
+        assertEquals(86, probe.batteryPercent)
+        assertNull(TempSpikeDecoder.decodeNotification(bytes(0x10, 0x01, 0x1D, 0x00, 0x0F, 0x09, 0x1D, 0x00)))
+        assertNull(TempSpikeDecoder.decodeNotification(bytes(0x00, 0x80)))
+        assertTrue(TempSpikeDecoder.needsConnection("I61"))
+        assertFalse(TempSpikeDecoder.needsConnection("TP960R (0000)"))
+    }
+
+    @Test
     fun tp962rTwoProbes() {
         // {17152: b"\x00\x17\nC\x00", 14081: b"\x00;\x0b7\x00"}
         val r = TempSpikeDecoder.decode(

@@ -18,8 +18,8 @@ It needs no account, cloud service or pairing.
 
 ## How it works
 
-The TempSpike booster puts the probe's readings into its Bluetooth advertisement, so the app just listens for broadcasts.
-It never connects to the booster.
+Most TempSpike boosters put the probe's readings into their Bluetooth advertisement, so for those the app just listens for broadcasts.
+The TP961 is different; see below.
 The byte layout comes from the open-source [thermopro-ble](https://github.com/Bluetooth-Devices/thermopro-ble) project, which is what Home Assistant uses:
 
 | bytes | meaning |
@@ -31,9 +31,17 @@ The byte layout comes from the open-source [thermopro-ble](https://github.com/Bl
 
 Android splits the first two bytes off as a "company ID", so `TempSpikeDecoder.frame()` glues them back on before decoding.
 
-The TP961 advertises under the name **"I61"**, not "TP961" (also found in [thermopro-ble #224](https://github.com/Bluetooth-Devices/thermopro-ble/pull/224)).
-Between readings, for example while the probe is in the booster, it sends a 6-byte frame that is just its own address backwards.
-Those frames are ignored.
+### TP961 (TempSpike CORE): readings over a connection
+
+The TP961 advertises as **"I61"**, and its broadcast carries only its own address backwards.
+So TempWatch connects to it (`SpikeLink`), with no pairing or login, and subscribes to one characteristic:
+
+- service `93bb7cab-eb14-c5a9-2354-a24f4df9330f`, characteristic `0000ff01-…` (notify)
+- every 3 s, one notification per probe slot: `10` followed by the same 7-byte frame as above, e.g. `10 00 3D 00 3D 0A 3D 00` = probe 1, meat 31°C, 2621 mV, grill 31°C
+- the booster reports two slots; an empty slot reads −1°C on both sensors and is skipped
+
+The link stays up while the app is open or a cook is running, and reconnects on its own (screen off included).
+The booster takes one connection at a time, so close the TempPro app while using TempWatch.
 
 Things to know:
 

@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.ble.BleScanner
 import app.tempwatch.ble.GattProbe
+import app.tempwatch.ble.SpikeLink
 import app.tempwatch.cook.LiveUpdates
 import app.tempwatch.cook.RawAdvert
 import app.tempwatch.cook.TempHub
@@ -176,6 +177,7 @@ fun BluetoothDetailsScreen(onBack: () -> Unit) {
     val askConnect = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val address = pendingTest
         pendingTest = null
+        if (granted) SpikeLink.retryAll()
         if (granted && address != null) GattProbe.run(context, address)
     }
     val startTest: (String) -> Unit = { address ->

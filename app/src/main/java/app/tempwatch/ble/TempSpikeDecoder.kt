@@ -74,6 +74,20 @@ object TempSpikeDecoder {
             .mapNotNull { (id, payload) -> decodeFrame(name, frame(id, payload)) }
             .distinctBy { it.probe }
 
+    /** Boosters that only give readings over a connection (see [SpikeLink]): the TP961 "I61". */
+    fun needsConnection(name: String?): Boolean = SHORT_NAME.matches(name?.trim()?.uppercase().orEmpty())
+
+    /**
+     * A notification from the TP961's FF01 characteristic (service 93bb7cab-…): 0x10, then the
+     * same 7-byte frame as the broadcast one. Sent every 3 s per probe slot.
+     */
+    fun decodeNotification(data: ByteArray): ProbeReading? =
+        if (data.size >= 8 && data[0] == 0x10.toByte()) {
+            decodeSpike(data.copyOfRange(1, 8))?.copy(format = "TP961 link")
+        } else {
+            null
+        }
+
     fun decodeFrame(name: String?, data: ByteArray): ProbeReading? {
         val n = name?.trim()?.uppercase().orEmpty()
         return when {
@@ -83,7 +97,11 @@ object TempSpikeDecoder {
         }
     }
 
-    private fun decodeSpike(d: ByteArray): ProbeReading {
+    /** Both sensors at exactly −1 °C (raw 29): an empty probe slot (the TP961 booster reports two). */
+    private const val EMPTY_SLOT = 29
+
+    private fun decodeSpike(d: ByteArray): ProbeReading? {
+        if (d.u16(1) == EMPTY_SLOT && d.u16(5) == EMPTY_SLOT) return null
         val millivolts = d.u16(3)
         return ProbeReading(
             probe = d.u8(0),

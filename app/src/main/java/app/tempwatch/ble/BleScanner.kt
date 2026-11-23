@@ -100,6 +100,7 @@ object BleScanner {
     private fun refresh(force: Boolean) {
         val context = app ?: return
         main.removeCallbacks(retry)
+        SpikeLink.setWanted(context, holders.isNotEmpty()) // TP961s are read over a connection
         if (holders.isEmpty()) {
             stop()
             _status.value = Status.IDLE
