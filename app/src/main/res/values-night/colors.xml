@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Dark mode: black start-up window and black launcher background (the icon goes dark too). -->
-    <color name="window_bg">#FF000000</color>
-    <color name="ic_launcher_background">#FF000000</color>
-</resources>

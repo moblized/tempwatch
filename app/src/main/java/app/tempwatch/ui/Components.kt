@@ -1,6 +1,9 @@
 package app.tempwatch.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,9 +53,16 @@ fun PageHeader(title: String, onBack: () -> Unit) {
 
 @Composable
 fun SectionCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Card(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
-    }
+    // OLED: near-black panel with a hairline edge, on a pure black screen.
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainer, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) { content() }
 }
 
 /** Small label + value tile, e.g. "Grill" / "251°F". */
@@ -88,8 +98,9 @@ fun TempGraph(
     unit: TempUnit,
     modifier: Modifier = Modifier,
     endTime: Long? = null,
+    /** The meat line's colour: the heat colour of the current (or peak) temperature. */
+    meatColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val meatColor = MaterialTheme.colorScheme.primary
     val grillColor = MaterialTheme.colorScheme.tertiary
     val targetColor = MaterialTheme.colorScheme.secondary
     val gridColor = MaterialTheme.colorScheme.outlineVariant

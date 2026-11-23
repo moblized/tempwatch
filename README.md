@@ -14,7 +14,7 @@ It needs no account, cloud service or pairing.
 - **Cook history**: every finished cook is saved with its graph, cook time, peak temperatures and time to target.
 - **Lock-screen live card**: during a cook the app keeps listening with the screen off. It shows a live card on the lock screen, and on Android 16 a temperature chip in the status bar (Samsung's Now Bar). The card has *End cook* and *Stop alarm* buttons.
 - **Signal-lost warning** after 90 seconds without a reading.
-- Light and dark themes follow the phone, and so does the app icon.
+- **OLED dark look**: true black everywhere, one card for the probe with a ring of ticks that warms from cool blue through red and orange as the meat heats up. The temperature numbers take the same colour, and the target is a white tag on the ring. The app icon is the same ring, on black.
 
 ## How it works
 

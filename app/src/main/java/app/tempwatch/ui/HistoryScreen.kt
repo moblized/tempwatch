@@ -148,7 +148,7 @@ private fun CookDetails(r: CookRecord, unit: TempUnit, onDelete: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatTile(
                 "Peak meat", Temps.format(r.peakInternalC, unit), Modifier.weight(1f),
-                valueColor = MaterialTheme.colorScheme.primary,
+                valueColor = r.peakInternalC?.let { heatColor(it) } ?: MaterialTheme.colorScheme.primary,
             )
             StatTile(
                 "Peak grill", Temps.format(r.peakAmbientC, unit), Modifier.weight(1f),
@@ -167,6 +167,7 @@ private fun CookDetails(r: CookRecord, unit: TempUnit, onDelete: () -> Unit) {
                 targetC = r.targetC,
                 unit = unit,
                 endTime = r.endedAt,
+                meatColor = r.peakInternalC?.let { heatColor(it) } ?: MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth().height(260.dp),
             )
         }

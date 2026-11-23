@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Start-up window colour (no flash before Compose draws) and the light launcher background. -->
-    <color name="window_bg">#FFFFF8F5</color>
-    <color name="ic_launcher_background">#FFFFF3EC</color>
+    <!-- Always dark (OLED): black start-up window and black launcher-icon background. -->
+    <color name="window_bg">#FF000000</color>
+    <color name="ic_launcher_background">#FF000000</color>
 </resources>
