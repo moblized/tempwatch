@@ -12,7 +12,7 @@ import kotlinx.coroutines.delay
 // panels with hairline edges, silver text accents, ember red for the main buttons and teal for
 // the grill. The meat temperature itself is coloured by HeatScale. The launcher icon is the
 // dark version too, since the app is always dark.
-private val Oled = darkColorScheme(
+private val OledScheme = darkColorScheme(
     primary = Color(0xFFA9342A),
     onPrimary = Color(0xFFF3E9D7),
     primaryContainer = Color(0xFF3A1A16),
@@ -44,7 +44,7 @@ private val Oled = darkColorScheme(
 
 @Composable
 fun TempWatchTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = Oled, content = content)
+    MaterialTheme(colorScheme = OledScheme, content = content)
 }
 
 /** Wall-clock time that ticks every second, for "seen 5 s ago" and elapsed times. */

@@ -143,9 +143,9 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
             scan == BleScanner.Status.BLUETOOTH_OFF -> SectionCard {
                 Text("Bluetooth is off", style = MaterialTheme.typography.titleMedium)
                 Text("Turn it on to hear your thermometer.")
-                RedButton("Bluetooth settings") {
+                RedButton("Bluetooth settings", onClick = {
                     runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-                }
+                })
             }
             scan == BleScanner.Status.NO_BLUETOOTH -> SectionCard {
                 Text("This phone has no Bluetooth LE.", style = MaterialTheme.typography.titleMedium)
