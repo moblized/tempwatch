@@ -50,5 +50,44 @@
         <receiver
             android:name=".cook.ActionReceiver"
             android:exported="false" />
+
+        <!-- Home-screen widgets: the heat ring (2×2) and the cook card (4×2) -->
+        <receiver
+            android:name=".widget.RingWidget"
+            android:exported="true"
+            android:label="@string/widget_ring_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_ring_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.CookWidget"
+            android:exported="true"
+            android:label="@string/widget_cook_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_cook_info" />
+        </receiver>
+
+        <!-- Quick-settings tile; "active" mode: it refreshes when TempWatch asks, not on a timer -->
+        <service
+            android:name=".widget.TempTile"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_thermo"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
     </application>
 </manifest>

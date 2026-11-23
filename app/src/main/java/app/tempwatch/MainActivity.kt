@@ -1,6 +1,7 @@
 package app.tempwatch
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -20,9 +21,12 @@ import app.tempwatch.cook.CookService
 import app.tempwatch.cook.TempHub
 import app.tempwatch.ui.AppRoot
 import app.tempwatch.ui.TempWatchTheme
+import app.tempwatch.widget.Widgets
 
 class MainActivity : ComponentActivity() {
     private var canScan by mutableStateOf(false)
+    /** Set when a widget or the quick-settings tile asks to go straight to the preset picker. */
+    private var openPicker by mutableStateOf(false)
 
     private val askPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -39,14 +43,26 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         canScan = BleScanner.hasPermission(this)
+        if (savedInstanceState == null) openPicker = intent?.getBooleanExtra(Widgets.EXTRA_OPEN_PICKER, false) == true
         setContent {
             TempWatchTheme {
-                AppRoot(canScan = canScan, onRequestPermissions = ::requestPermissions)
+                AppRoot(
+                    canScan = canScan,
+                    onRequestPermissions = ::requestPermissions,
+                    openPicker = openPicker,
+                    onPickerOpened = { openPicker = false },
+                )
             }
         }
         if (savedInstanceState == null && (!canScan || !GattProbe.hasPermission(this) || missingNotificationPermission())) {
             requestPermissions()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(Widgets.EXTRA_OPEN_PICKER, false)) openPicker = true
     }
 
     override fun onStart() {

@@ -325,7 +325,7 @@ private fun RingCenter(cook: ActiveCook?, est: Estimator.Estimate?, meat: Double
         }
         showTime -> {
             label = "COOKING"; labelColor = Oled.grill
-            big = timeLeft(minutes!!); bigColor = Color.White
+            big = Temps.timeLeft(minutes!!); bigColor = Color.White
             under = "REMAINING"
             foot = "Ready ~${clock(now + (minutes * 60_000).toLong())}"
         }
@@ -361,15 +361,6 @@ private fun RingCenter(cook: ActiveCook?, est: Estimator.Estimate?, meat: Double
             Spacer(Modifier.height(2.dp))
             Text(it, fontSize = 13.sp, fontWeight = FontWeight.Light, color = Oled.label)
         }
-    }
-}
-
-private fun timeLeft(minutes: Double): String {
-    val m = minutes.toLong()
-    return when {
-        m < 1 -> "<1 m"
-        m < 60 -> "$m m"
-        else -> "${m / 60}h ${m % 60}m"
     }
 }
 

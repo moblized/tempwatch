@@ -11,6 +11,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,9 +41,22 @@ private sealed interface Page {
 }
 
 @Composable
-fun AppRoot(canScan: Boolean, onRequestPermissions: () -> Unit) {
+fun AppRoot(
+    canScan: Boolean,
+    onRequestPermissions: () -> Unit,
+    openPicker: Boolean = false,
+    onPickerOpened: () -> Unit = {},
+) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var page by remember { mutableStateOf<Page?>(null) }
+    // From a widget or the quick-settings tile while nothing is cooking: straight to the presets.
+    LaunchedEffect(openPicker) {
+        if (openPicker) {
+            tab = 0
+            if (TempHub.cook.value == null) page = Page.Picker(changing = false)
+            onPickerOpened()
+        }
+    }
     BackHandler(enabled = page != null) { page = null }
 
     // Keep the screen awake while the app is open during a cook (Settings → While cooking).

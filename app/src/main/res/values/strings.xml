@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TempWatch</string>
+    <string name="widget_ring_name">TempWatch ring</string>
+    <string name="widget_ring_desc">The heat ring with the meat temperature and time left</string>
+    <string name="widget_cook_name">TempWatch cook</string>
+    <string name="widget_cook_desc">Heat ring plus time left, target and grill temperature</string>
+    <string name="tile_label">TempWatch</string>
 </resources>

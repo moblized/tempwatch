@@ -7,6 +7,7 @@ import app.tempwatch.ble.SpikeLink
 import app.tempwatch.ble.ProbeReading
 import app.tempwatch.ble.TempSpikeDecoder
 import app.tempwatch.data.Prefs
+import app.tempwatch.widget.Widgets
 import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -163,6 +164,7 @@ object TempHub {
             probes = (old?.probes ?: emptyMap()) + readings.associateBy { it.probe },
         ))
         readings.forEach { onCookReading(address, it, now) }
+        if (readings.isNotEmpty()) Widgets.onStateChanged(app) // home-screen widgets + tile, at most every 5 s
     }
 
     private fun describe(r: ProbeReading): String =
@@ -265,6 +267,7 @@ object TempHub {
         )
         persist(force = true)
         CookService.start(app)
+        Widgets.updateAll(app)
     }
 
     fun changeTarget(title: String, targetC: Double) {
@@ -280,6 +283,7 @@ object TempHub {
         Alerts.cancelDone(app)
         Alerts.cancelHeadsUp(app)
         persist(force = true)
+        Widgets.updateAll(app)
     }
 
     fun endCook() {
@@ -292,6 +296,7 @@ object TempHub {
             _historyVersion.value++
         }
         Alerts.cancelAll(app)
+        Widgets.updateAll(app)
     }
 
     fun stopAlarm() {
@@ -356,6 +361,7 @@ object TempHub {
         if (!c.signalLost && quiet > SIGNAL_LOST_MS) {
             _cook.value = c.copy(signalLost = true)
             Alerts.showSignalLost(app)
+            Widgets.onStateChanged(app)
         }
         if (quiet > 45_000L && now - lastScanKick > 60_000L) {
             lastScanKick = now

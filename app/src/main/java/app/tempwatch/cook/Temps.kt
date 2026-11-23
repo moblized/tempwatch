@@ -31,6 +31,16 @@ object Temps {
         return "$sign$shown${unit.symbol}/min"
     }
 
+    /** Time left for the ring and widgets: "12 m", "1h 25m", "<1 m". */
+    fun timeLeft(minutes: Double): String {
+        val m = minutes.toLong()
+        return when {
+            m < 1 -> "<1 m"
+            m < 60 -> "$m m"
+            else -> "${m / 60}h ${m % 60}m"
+        }
+    }
+
     /** "1h 25m", "12m", "<1m". */
     fun duration(ms: Long): String {
         val totalMin = (ms / 60_000L).coerceAtLeast(0)
