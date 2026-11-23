@@ -176,10 +176,7 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
                     }
                 }
             }
-            device == null && cook == null -> SectionCard {
-                Text("Looking for your TempSpike…", style = MaterialTheme.typography.titleMedium)
-                Text("• Batteries in the booster (2 × AAA)\n• Probe pulled out of the booster to wake it\n• Close the TempPro app: the booster takes one connection at a time\n• Stay within a few feet for the first connection")
-            }
+            // Still searching: the SEARCHING tag at the top says so; no tips card.
         }
 
         if (device != null || cook != null) {
@@ -188,11 +185,6 @@ fun CookScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onPickTarget:
 
         if (cook == null) {
             RedButton("Start a cook", onClick = { onPickTarget(false) }, modifier = Modifier.fillMaxWidth().height(56.dp))
-            Text(
-                "Pick the meat and doneness (or your own target). You'll get an alarm when it's done, even with the phone locked.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Oled.label,
-            )
         } else {
             SectionCard {
                 TempGraph(
