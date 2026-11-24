@@ -3,7 +3,9 @@ package app.tempwatch.cook
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.util.Log
+import app.tempwatch.data.AlarmSound
 
 /**
  * Rings the "it's done" alarm in Chroma Noise (app.chromanoise), so it sounds and looks like
@@ -42,17 +44,30 @@ object ChromaLink {
     }
 
     /** Asks Chroma Noise to ring. False if it can't (not installed, too old): ring here instead. */
-    /** [sound]: a phone sound URI, "silent", or null for Chroma Noise's soft chimes. */
-    fun ring(context: Context, title: String, detail: String, sound: String?): Boolean {
+    fun ring(context: Context, title: String, detail: String, sound: AlarmSound): Boolean {
         if (status(context) != Status.READY) return false
+        sound.uri?.let { shareFile(context, Uri.parse(it)) }
         return send(
             context,
             intent(context, ACTION_RING)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_DETAIL, detail)
-                .apply { if (sound != null) putExtra(EXTRA_SOUND, sound) }
+                .apply { sound.forChroma?.let { putExtra(EXTRA_SOUND, it) } }
                 .putExtra(EXTRA_ON_RINGING, ActionReceiver.pending(context, ActionReceiver.CHROMA_RINGING)),
         )
+    }
+
+    /**
+     * Your own sound file is only readable by TempWatch: let Chroma Noise read it too. Done on
+     * every ring because Android forgets these grants on restart. Phone sounds need nothing.
+     */
+    private fun shareFile(context: Context, uri: Uri) {
+        if (context.contentResolver.persistedUriPermissions.none { it.uri == uri && it.isReadPermission }) return
+        try {
+            context.grantUriPermission(PACKAGE, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Couldn't share the sound file; Chroma Noise will use its chimes", e)
+        }
     }
 
     /** Stops a ring we asked for (cancelled before it starts, or silenced). */

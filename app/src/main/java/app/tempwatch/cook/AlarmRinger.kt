@@ -14,8 +14,8 @@ import android.os.VibratorManager
 import app.tempwatch.data.AlarmSound
 
 /**
- * The "it's done" alarm when Chroma Noise doesn't ring it: the chosen phone sound (or the
- * phone's default alarm for "Soft chimes", which only Chroma Noise has), looping, on the alarm volume (so it isn't
+ * The "it's done" alarm when Chroma Noise doesn't ring it: the chosen phone sound or file (or
+ * the phone's default alarm for the sounds only Chroma Noise has), looping, on the alarm volume (so it isn't
  * silenced like a notification would be), plus vibration. Stops when you tap Stop alarm, end
  * the cook, or after 10 minutes.
  */
@@ -44,7 +44,7 @@ object AlarmRinger {
 
         // Vibrate only, unless the phone can't vibrate: the alarm must never be silent by accident.
         if (!sound.silent || vib == null) {
-            val chosen = sound.uri?.takeIf { !sound.silent }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            val chosen = sound.uri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             val uri = chosen
                 ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)

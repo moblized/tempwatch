@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
@@ -147,8 +148,8 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
                 Column(Modifier.weight(1f)) {
                     Text("Alarm sound")
                     Text(
-                        if (alarmSound == AlarmSound.CHIMES && !chromaRings) {
-                            "Soft chimes (needs Chroma Noise, so your phone's alarm plays for now)"
+                        if (alarmSound.needsChroma && !chromaRings) {
+                            "${alarmSound.name} (needs Chroma Noise, so your phone's alarm plays for now)"
                         } else {
                             alarmSound.name
                         },
@@ -160,7 +161,7 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
             }
             if (chromaRings) {
                 OutlinedButton(onClick = {
-                    val sent = ChromaLink.ring(context, "Test alarm", "This is how a finished cook rings", alarmSound.uri)
+                    val sent = ChromaLink.ring(context, "Test alarm", "This is how a finished cook rings", alarmSound)
                     Toast.makeText(
                         context,
                         if (sent) "Ringing in Chroma Noise…" else "Couldn't reach Chroma Noise",
@@ -241,38 +242,73 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
 }
 
 /** Raw broadcasts from nearby devices: for checking what the thermometer actually sends. */
-/** Soft chimes (Chroma Noise's), vibrate only, or any of the phone's sounds. */
+/** Same as your Chroma Noise alarm, soft chimes, vibrate only, a phone sound, or your own file. */
 @Composable
 private fun AlarmSoundDialog(current: AlarmSound, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    val resolver = context.contentResolver
+    val ownFile = remember(current) {
+        current.uri != null && resolver.persistedUriPermissions.any { it.uri.toString() == current.uri }
+    }
+
+    fun choose(sound: AlarmSound) {
+        // Let go of the old file if it's no longer used (Android limits how many we can keep).
+        if (ownFile && sound.value != current.value) {
+            runCatching { resolver.releasePersistableUriPermission(Uri.parse(current.value), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        Prefs.setAlarmSound(sound)
+    }
+
+    val ringtonePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         val uri = result.data?.let {
             IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
         } ?: return@rememberLauncherForActivityResult
         val title = runCatching { RingtoneManager.getRingtone(context, uri)?.getTitle(context) }.getOrNull()
-        Prefs.setAlarmSound(AlarmSound(uri.toString(), title ?: "Phone sound"))
+        choose(AlarmSound(uri.toString(), title ?: "Phone sound"))
+        onDismiss()
     }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            // Keep access after a restart, so the alarm can still play it.
+            resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: SecurityException) {
+            Toast.makeText(context, "Can't keep access to that file; pick it from Files or Downloads", Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
+        choose(AlarmSound(uri.toString(), fileName(context, uri) ?: "My sound"))
+        onDismiss()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Alarm sound") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                SoundOption(
+                    AlarmSound.MATCH_ALARM.name,
+                    "The sound and vibration of your next alarm there",
+                    current == AlarmSound.MATCH_ALARM,
+                ) {
+                    choose(AlarmSound.MATCH_ALARM)
+                    onDismiss()
+                }
                 SoundOption(AlarmSound.CHIMES.name, "Chroma Noise's built-in sound", current == AlarmSound.CHIMES) {
-                    Prefs.setAlarmSound(AlarmSound.CHIMES)
+                    choose(AlarmSound.CHIMES)
                     onDismiss()
                 }
                 SoundOption("No sound", "Vibrate only", current.silent) {
-                    Prefs.setAlarmSound(AlarmSound.VIBRATE_ONLY)
+                    choose(AlarmSound.VIBRATE_ONLY)
                     onDismiss()
                 }
-                val phoneSound = current.uri != null && !current.silent
+                val phoneSound = current.uri != null && !ownFile
                 SoundOption(
                     "Phone sound…",
                     if (phoneSound) current.name else "Pick one of your phone's alarms or ringtones",
                     phoneSound,
                 ) {
-                    onDismiss()
+                    // The dialog stays open until the picker answers: closing it would drop the answer.
                     val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Alarm sound")
@@ -281,9 +317,20 @@ private fun AlarmSoundDialog(current: AlarmSound, onDismiss: () -> Unit) {
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_ALARM_ALERT_URI)
                         .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current.uri?.takeIf { phoneSound }?.let(Uri::parse))
                     try {
-                        picker.launch(intent)
+                        ringtonePicker.launch(intent)
                     } catch (e: ActivityNotFoundException) {
                         Toast.makeText(context, "This phone has no sound picker", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                SoundOption(
+                    "My own file…",
+                    if (ownFile) current.name else "An MP3 or other audio file on your phone",
+                    ownFile,
+                ) {
+                    try {
+                        filePicker.launch(arrayOf("audio/*"))
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, "This phone has no file picker", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -292,6 +339,13 @@ private fun AlarmSoundDialog(current: AlarmSound, onDismiss: () -> Unit) {
         containerColor = Oled.card,
     )
 }
+
+/** "Smoke Alarm.mp3" → "Smoke Alarm". */
+private fun fileName(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    }
+}.getOrNull()?.substringBeforeLast('.')?.ifBlank { null }
 
 @Composable
 private fun SoundOption(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {

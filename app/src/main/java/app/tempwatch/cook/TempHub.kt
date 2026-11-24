@@ -373,7 +373,7 @@ object TempHub {
         val title = "${rec.title} is ready"
         val detail = "${Temps.format(meatC, unit)} · target ${Temps.format(rec.targetC, unit)}"
         val sound = Prefs.alarmSound.value
-        if (Prefs.ringWithChroma.value && ChromaLink.ring(app, title, detail, sound.uri)) {
+        if (Prefs.ringWithChroma.value && ChromaLink.ring(app, title, detail, sound)) {
             chromaAsked = true
             main.postDelayed(chromaWatchdog, CHROMA_CONFIRM_MS)
         } else {
