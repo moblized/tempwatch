@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tempwatch.ble.BleScanner
 import app.tempwatch.ble.GattProbe
 import app.tempwatch.ble.SpikeLink
+import app.tempwatch.cook.ChromaLink
 import app.tempwatch.cook.LiveUpdates
 import app.tempwatch.cook.RawAdvert
 import app.tempwatch.cook.TempHub
@@ -63,6 +64,9 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
     var resumes by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumes++ }
     val live = remember(resumes) { LiveUpdates.status(context) }
+    // …and whether Chroma Noise was installed or updated meanwhile.
+    val chroma = remember(resumes) { ChromaLink.status(context) }
+    val ringWithChroma by Prefs.ringWithChroma.collectAsStateWithLifecycle()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -98,6 +102,42 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text("Ring with Chroma Noise")
+                    Text(
+                        when (chroma) {
+                            ChromaLink.Status.READY ->
+                                if (ringWithChroma) {
+                                    "The done alarm rings in Chroma Noise, full screen like your other alarms. Stop it in either app."
+                                } else {
+                                    "Off. Your phone's alarm sound plays instead."
+                                }
+                            ChromaLink.Status.NEEDS_UPDATE ->
+                                "Update Chroma Noise to ring through it. Until then your phone's alarm sound plays."
+                            ChromaLink.Status.NOT_INSTALLED ->
+                                "Chroma Noise isn't installed, so your phone's alarm sound plays."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = ringWithChroma && chroma == ChromaLink.Status.READY,
+                    enabled = chroma == ChromaLink.Status.READY,
+                    onCheckedChange = { Prefs.setRingWithChroma(it) },
+                )
+            }
+            if (chroma == ChromaLink.Status.READY && ringWithChroma) {
+                OutlinedButton(onClick = {
+                    val sent = ChromaLink.ring(context, "Test alarm", "This is how a finished cook rings")
+                    Toast.makeText(
+                        context,
+                        if (sent) "Ringing in Chroma Noise…" else "Couldn't reach Chroma Noise",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }) { Text("Test alarm") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
                     Text("Keep screen on while cooking")
                     Text(
                         "Only while TempWatch is open. Locking the phone still works; the cook keeps running.",
@@ -108,8 +148,9 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
                 Switch(checked = keepScreenOn, onCheckedChange = { Prefs.setKeepScreenOn(it) })
             }
             Text(
-                "When the target is reached, your phone's alarm sound plays on the alarm volume until you stop it " +
-                    "(or for 10 minutes). Signal-lost warnings come after 90 seconds without a reading.",
+                "When the target is reached, the alarm rings until you stop it (or for 10 minutes). If Chroma Noise " +
+                    "doesn't answer within 10 seconds, your phone's alarm sound plays instead. Signal-lost warnings " +
+                    "come after 90 seconds without a reading.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

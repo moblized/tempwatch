@@ -2,6 +2,8 @@ package app.tempwatch.cook
 
 import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import app.tempwatch.ble.BleScanner
 import app.tempwatch.ble.SpikeLink
 import app.tempwatch.ble.ProbeReading
@@ -64,10 +66,22 @@ object TempHub {
     private const val SAMPLE_EVERY_MS = 10_000L
     private const val SIGNAL_LOST_MS = 90_000L
     private const val PERSIST_EVERY_MS = 60_000L
+    /** How long Chroma Noise gets to say it's ringing before TempWatch rings by itself. */
+    private const val CHROMA_CONFIRM_MS = 10_000L
     private const val MAX_RAW = 80
 
     private lateinit var app: Context
     private val io = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    /** The done alarm was handed to Chroma Noise, and whether it has said it's ringing. */
+    @Volatile private var chromaAsked = false
+    @Volatile private var chromaRinging = false
+
+    /** Chroma Noise never said it was ringing: ring here instead, so the cook isn't missed. */
+    private val chromaWatchdog = Runnable {
+        if (chromaAsked && !chromaRinging && _cook.value?.alarmRinging == true) AlarmRinger.start(app)
+    }
 
     private val _devices = MutableStateFlow<Map<String, DeviceState>>(emptyMap())
     val devices: StateFlow<Map<String, DeviceState>> = _devices
@@ -287,7 +301,7 @@ object TempHub {
     }
 
     fun endCook() {
-        AlarmRinger.stop()
+        silenceAlarm()
         val c = _cook.value ?: return
         _cook.value = null
         val finished = c.record.copy(endedAt = System.currentTimeMillis())
@@ -300,7 +314,7 @@ object TempHub {
     }
 
     fun stopAlarm() {
-        AlarmRinger.stop()
+        silenceAlarm()
         Alerts.cancelDone(app)
         _cook.value?.let { if (it.alarmRinging) _cook.value = it.copy(alarmRinging = false) }
     }
@@ -340,7 +354,7 @@ object TempHub {
             if (next.wasBelow && c.record.reachedAt == null) {
                 if (meat >= doneAt) {
                     next = next.copy(record = next.record.copy(reachedAt = now), alarmRinging = true, headsUpSent = true)
-                    AlarmRinger.start(app)
+                    ringDone(next.record, meat, unit)
                     Alerts.showDone(app, next.record, meat, unit)
                     Alerts.cancelHeadsUp(app)
                 } else if (meat >= headsUpAt && !c.headsUpSent && Prefs.headsUp.value) {
@@ -351,6 +365,36 @@ object TempHub {
         }
         _cook.value = next
         persist(force = next.record.reachedAt != c.record.reachedAt)
+    }
+
+    /** The cook is done: ring in Chroma Noise if it's set up, else the phone's alarm sound. */
+    private fun ringDone(rec: CookRecord, meatC: Double, unit: TempUnit) {
+        silenceAlarm()
+        val title = "${rec.title} is ready"
+        val detail = "${Temps.format(meatC, unit)} · target ${Temps.format(rec.targetC, unit)}"
+        if (Prefs.ringWithChroma.value && ChromaLink.ring(app, title, detail)) {
+            chromaAsked = true
+            main.postDelayed(chromaWatchdog, CHROMA_CONFIRM_MS)
+        } else {
+            AlarmRinger.start(app)
+        }
+    }
+
+    /** Chroma Noise is ringing our alarm; if ours started meanwhile (it was slow), stop ours. */
+    fun onChromaRinging() {
+        if (!chromaAsked) return
+        chromaRinging = true
+        main.removeCallbacks(chromaWatchdog)
+        AlarmRinger.stop()
+    }
+
+    /** Stops the done alarm wherever it's ringing. */
+    private fun silenceAlarm() {
+        main.removeCallbacks(chromaWatchdog)
+        AlarmRinger.stop()
+        if (chromaAsked) ChromaLink.stop(app)
+        chromaAsked = false
+        chromaRinging = false
     }
 
     /** Every 15 s from [CookService]: signal-lost alert, scan watchdog, saving. */
