@@ -20,6 +20,7 @@ object ChromaLink {
     private const val ACTION_STOP = "app.chromanoise.action.STOP_EXTERNAL"
     private const val EXTRA_TITLE = "app.chromanoise.extra.TITLE"
     private const val EXTRA_DETAIL = "app.chromanoise.extra.DETAIL"
+    private const val EXTRA_SOUND = "app.chromanoise.extra.SOUND"
     private const val EXTRA_ON_STOP = "app.chromanoise.extra.ON_STOP"
     private const val EXTRA_ON_RINGING = "app.chromanoise.extra.ON_RINGING"
     private const val TAG = "ChromaLink"
@@ -41,13 +42,15 @@ object ChromaLink {
     }
 
     /** Asks Chroma Noise to ring. False if it can't (not installed, too old): ring here instead. */
-    fun ring(context: Context, title: String, detail: String): Boolean {
+    /** [sound]: a phone sound URI, "silent", or null for Chroma Noise's soft chimes. */
+    fun ring(context: Context, title: String, detail: String, sound: String?): Boolean {
         if (status(context) != Status.READY) return false
         return send(
             context,
             intent(context, ACTION_RING)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_DETAIL, detail)
+                .apply { if (sound != null) putExtra(EXTRA_SOUND, sound) }
                 .putExtra(EXTRA_ON_RINGING, ActionReceiver.pending(context, ActionReceiver.CHROMA_RINGING)),
         )
     }

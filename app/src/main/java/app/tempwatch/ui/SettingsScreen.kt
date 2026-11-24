@@ -1,6 +1,20 @@
 package app.tempwatch.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.semantics.Role
+import androidx.core.content.IntentCompat
+import app.tempwatch.data.AlarmSound
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -67,6 +81,9 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
     // …and whether Chroma Noise was installed or updated meanwhile.
     val chroma = remember(resumes) { ChromaLink.status(context) }
     val ringWithChroma by Prefs.ringWithChroma.collectAsStateWithLifecycle()
+    val alarmSound by Prefs.alarmSound.collectAsStateWithLifecycle()
+    var showSounds by remember { mutableStateOf(false) }
+    val chromaRings = chroma == ChromaLink.Status.READY && ringWithChroma
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -126,9 +143,24 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
                     onCheckedChange = { Prefs.setRingWithChroma(it) },
                 )
             }
-            if (chroma == ChromaLink.Status.READY && ringWithChroma) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Alarm sound")
+                    Text(
+                        if (alarmSound == AlarmSound.CHIMES && !chromaRings) {
+                            "Soft chimes (needs Chroma Noise, so your phone's alarm plays for now)"
+                        } else {
+                            alarmSound.name
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { showSounds = true }) { Text("Change") }
+            }
+            if (chromaRings) {
                 OutlinedButton(onClick = {
-                    val sent = ChromaLink.ring(context, "Test alarm", "This is how a finished cook rings")
+                    val sent = ChromaLink.ring(context, "Test alarm", "This is how a finished cook rings", alarmSound.uri)
                     Toast.makeText(
                         context,
                         if (sent) "Ringing in Chroma Noise…" else "Couldn't reach Chroma Noise",
@@ -155,6 +187,8 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        if (showSounds) AlarmSoundDialog(current = alarmSound, onDismiss = { showSounds = false })
 
         SectionCard {
             Text("Lock-screen live card", style = MaterialTheme.typography.titleMedium)
@@ -207,6 +241,76 @@ fun SettingsScreen(canScan: Boolean, onRequestPermissions: () -> Unit, onBluetoo
 }
 
 /** Raw broadcasts from nearby devices: for checking what the thermometer actually sends. */
+/** Soft chimes (Chroma Noise's), vibrate only, or any of the phone's sounds. */
+@Composable
+private fun AlarmSoundDialog(current: AlarmSound, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val uri = result.data?.let {
+            IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+        } ?: return@rememberLauncherForActivityResult
+        val title = runCatching { RingtoneManager.getRingtone(context, uri)?.getTitle(context) }.getOrNull()
+        Prefs.setAlarmSound(AlarmSound(uri.toString(), title ?: "Phone sound"))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Alarm sound") },
+        text = {
+            Column {
+                SoundOption(AlarmSound.CHIMES.name, "Chroma Noise's built-in sound", current == AlarmSound.CHIMES) {
+                    Prefs.setAlarmSound(AlarmSound.CHIMES)
+                    onDismiss()
+                }
+                SoundOption("No sound", "Vibrate only", current.silent) {
+                    Prefs.setAlarmSound(AlarmSound.VIBRATE_ONLY)
+                    onDismiss()
+                }
+                val phoneSound = current.uri != null && !current.silent
+                SoundOption(
+                    "Phone sound…",
+                    if (phoneSound) current.name else "Pick one of your phone's alarms or ringtones",
+                    phoneSound,
+                ) {
+                    onDismiss()
+                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Alarm sound")
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_ALARM_ALERT_URI)
+                        .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current.uri?.takeIf { phoneSound }?.let(Uri::parse))
+                    try {
+                        picker.launch(intent)
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, "This phone has no sound picker", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        containerColor = Oled.card,
+    )
+}
+
+@Composable
+private fun SoundOption(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 fun BluetoothDetailsScreen(onBack: () -> Unit) {
     val context = LocalContext.current

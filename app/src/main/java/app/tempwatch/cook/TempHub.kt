@@ -80,7 +80,7 @@ object TempHub {
 
     /** Chroma Noise never said it was ringing: ring here instead, so the cook isn't missed. */
     private val chromaWatchdog = Runnable {
-        if (chromaAsked && !chromaRinging && _cook.value?.alarmRinging == true) AlarmRinger.start(app)
+        if (chromaAsked && !chromaRinging && _cook.value?.alarmRinging == true) AlarmRinger.start(app, Prefs.alarmSound.value)
     }
 
     private val _devices = MutableStateFlow<Map<String, DeviceState>>(emptyMap())
@@ -372,11 +372,12 @@ object TempHub {
         silenceAlarm()
         val title = "${rec.title} is ready"
         val detail = "${Temps.format(meatC, unit)} · target ${Temps.format(rec.targetC, unit)}"
-        if (Prefs.ringWithChroma.value && ChromaLink.ring(app, title, detail)) {
+        val sound = Prefs.alarmSound.value
+        if (Prefs.ringWithChroma.value && ChromaLink.ring(app, title, detail, sound.uri)) {
             chromaAsked = true
             main.postDelayed(chromaWatchdog, CHROMA_CONFIRM_MS)
         } else {
-            AlarmRinger.start(app)
+            AlarmRinger.start(app, sound)
         }
     }
 
